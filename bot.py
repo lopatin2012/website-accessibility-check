@@ -2,6 +2,7 @@ import datetime
 import sys
 import time
 import telebot
+import threading
 #sudo pip3 install pyTelegramBotAPI
 import requests
 # from bot_id import bot_id, chat_id, web_site
@@ -11,7 +12,7 @@ import os
 
 root = Tk()
 root.title("Приложения для проверки доступа к веб-сайту")
-root.geometry("300x250")
+root.geometry("200x300")
 
 #Присваивание токена
 
@@ -23,11 +24,10 @@ text_ready = StringVar()
 bot_id = ''
 chat_id = 0
 web_site = ''
+flag = True
+thr1 = ''
 
 
-
-def on_exit(event):
-    sys.exit()
 
 def load_optin():
     global web_site, bot_id, chat_id, text_ready, bot
@@ -43,19 +43,20 @@ def log_file(text):
         f.write(f'{text}')
 
 
+def flag_false():
+    flag = False
+    status_ping.stop
+    return flag
 
-# def save_option():
-#     with open('bot_id.py', 'w+', encoding='utf-8') as f:
-#         f.write(f'bot_id = {bot_id_value.get()}\n')
-#         f.write(f'chat_id = {chat_id_value.get()}\n')
-#         f.write(f"web_site = '{str(web_site_value.get())}'\n")
 
 def ping_web():
+    flag = True
     domain = web_site
-    # Переменная для отвловли ошибки по исключительной ошибке
+    # Переменная для ловли ошибки
     count = 0
     chatId = chat_id
-    while True:
+    status_ping.start
+    while flag:
         time.sleep(1)
         try:
             response = requests.get(domain)
@@ -64,9 +65,10 @@ def ping_web():
                 time_list = list(map(int, time_now.split(':')))
                 summa_total_time_off = (time_list[0] * 60 * 60) + (time_list[1] * 60) + time_list[2]
                 total_time_off = abs(summa_total_time_off - difference_time)
-                send = f'Внимание!\nОшибка доступа к сайту\n{domain} \nс {str(now.strftime("%H:%M:%S"))}\nпо {time_down}\nИтого: {total_time_off} секунд'
-                bot.send_message(chatId, text=send)
-                text_date = f'Дата: {str(now.strftime("%d.%m.%Y"))}\n{send}'
+                # send = f'Внимание!\nОшибка доступа к сайту\n{domain} \nс {time_down}\nпо {str(now.strftime("%H:%M:%S"))}\nИтого: {total_time_off} секунд\n'
+                send = f'\n{domain}\n{str(now.strftime("%H:%M:%S"))} - OFF\n{time_down} - ON\n*{total_time_off} - LOST sec.*'
+                bot.send_message(chatId, text=send, parse_mode="Markdown")
+                text_date = f'\nДата: {str(now.strftime("%d.%m.%Y"))}\n{domain}\n{time_down} - OFF\n{str(now.strftime("%H:%M:%S"))} - ON\n{total_time_off}\n{total_time_off} - LOST sec.'
                 log_file(text_date)
                 count = 0
             elif response.status_code == 200 and count == 2:
@@ -74,9 +76,9 @@ def ping_web():
                 time_list = list(map(int, time_now.split(':')))
                 summa_total_time_off = (time_list[0] * 60 * 60) + (time_list[1] * 60) + time_list[2]
                 total_time_off = abs(summa_total_time_off - difference_time)
-                send = f'{domain} упал в {str(now.strftime("%H:%M:%S"))}\nЕго работа была\n восстановлена в {time_down}\nИтого: {total_time_off} секунд'
-                bot.send_message(chatId, text=send)
-                text_date = f'Дата: {str(now.strftime("%d.%m.%Y"))}\n{send}'
+                send = f'!!ERROR!!\n{domain}\n{time_down} - OFF\n{str(now.strftime("%H:%M:%S"))} - ON\n*{total_time_off} - LOST sec.*'
+                bot.send_message(chatId, text=send, parse_mode="Markdown")
+                text_date = f'!!ERROR!!\nДата: {str(now.strftime("%d.%m.%Y"))}\n!!ERROR!!\nДата: {str(now.strftime("%d.%m.%Y"))}\n{domain}\n{time_down} - OFF\n{str(now.strftime("%H:%M:%S"))} - ON\n{total_time_off}\n{total_time_off} - LOST sec.'
                 log_file(text_date)
                 count = 0
             elif response.status_code != 200 and count == 0:
@@ -92,10 +94,17 @@ def ping_web():
             time_down = str(datetime.datetime.now().strftime("%H:%M:%S"))
             time_list_down = list(map(int, time_down.split(':')))
             difference_time = (time_list_down[0] * 60 * 60) + (time_list_down[1] * 60) + time_list_down[2]
-                
 
-button_on_ping = ttk.Button(text="Запустить пинг", command=ping_web)
-button_on_ping.pack()
+def chech_thr():
+    global thr1
+    thr1 = threading.Thread(target=ping_web(),  args=(bot_id, chat_id, web_site))
+    return thr1.start()
+
+def close():
+    thr1.stop
+    return root.bind('<Destroy>', lambda f: root.destroy())
+
+
 
 field_domain_line = ttk.Label(text="Введите адрес сайта")
 field_domain_line.pack()
@@ -121,11 +130,20 @@ field_chat_id.pack()
 load_option_entry = ttk.Button(text="Загрузить настройки", command=load_optin)
 load_option_entry.pack()
 
+button_on_ping = ttk.Button(text="Запуск",  command=chech_thr)
+button_on_ping.pack()
+
+button_off_ping = ttk.Button(text='Выключить', command=close)
+button_off_ping.pack()
+
+status_ping = ttk.Progressbar()
+status_ping.pack()
+
 field_option_ready = ttk.Label(textvariable=text_ready)
 field_option_ready.pack()
 
 # print(ping_web(web_site))
-root.bind('<Destroy>', on_exit)
+root.bind('<Destroy>', lambda f: root.destroy())
+
 root.mainloop()
 bot.polling(none_stop=True)
-
